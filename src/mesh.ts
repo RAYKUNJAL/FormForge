@@ -93,30 +93,7 @@ export function buildReliefGeometry(imageData: ImageData, settings: MeshSettings
   return geometry;
 }
 
-export function geometryToBinaryStl(geometry: THREE.BufferGeometry): Blob {
-  const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry.clone();
-  const position = nonIndexed.getAttribute('position');
-  const normal = nonIndexed.getAttribute('normal');
-  const triangleCount = position.count / 3;
-  const buffer = new ArrayBuffer(84 + triangleCount * 50);
-  const view = new DataView(buffer);
-  view.setUint32(80, triangleCount, true);
-  let offset = 84;
-  for (let i = 0; i < position.count; i += 3) {
-    const nx = normal ? (normal.getX(i) + normal.getX(i + 1) + normal.getX(i + 2)) / 3 : 0;
-    const ny = normal ? (normal.getY(i) + normal.getY(i + 1) + normal.getY(i + 2)) / 3 : 0;
-    const nz = normal ? (normal.getZ(i) + normal.getZ(i + 1) + normal.getZ(i + 2)) / 3 : 1;
-    for (const n of [nx, ny, nz]) { view.setFloat32(offset, n, true); offset += 4; }
-    for (let v = 0; v < 3; v++) {
-      view.setFloat32(offset, position.getX(i + v), true); offset += 4;
-      view.setFloat32(offset, position.getY(i + v), true); offset += 4;
-      view.setFloat32(offset, position.getZ(i + v), true); offset += 4;
-    }
-    view.setUint16(offset, 0, true); offset += 2;
-  }
-  nonIndexed.dispose();
-  return new Blob([buffer], { type: 'model/stl' });
-}
+export { geometryToBinaryStl } from './exporters';
 
 export function validateGeometry(geometry: THREE.BufferGeometry, settings: MeshSettings) {
   geometry.computeBoundingBox();
