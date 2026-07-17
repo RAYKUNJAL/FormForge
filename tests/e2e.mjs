@@ -3,6 +3,7 @@ import fs from 'node:fs';
 
 const browser = await chromium.launch({
   headless: true,
+  executablePath: process.env.CHROMIUM_PATH || undefined,
   args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-webgl', '--ignore-gpu-blocklist']
 });
 const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1365, height: 900 } });

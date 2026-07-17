@@ -1,0 +1,7 @@
+services:
+  formforge:
+    build: .
+    container_name: formforge
+    restart: unless-stopped
+    ports:
+      - "80:80"
