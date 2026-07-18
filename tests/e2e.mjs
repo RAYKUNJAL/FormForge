@@ -1,5 +1,48 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
+import zlib from 'node:zlib';
+
+function crc32(buf) {
+  let crc = 0xffffffff;
+  for (const byte of buf) {
+    crc ^= byte;
+    for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const chunk = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const out = Buffer.alloc(chunk.length + 8);
+  out.writeUInt32BE(data.length, 0);
+  chunk.copy(out, 4);
+  out.writeUInt32BE(crc32(chunk), chunk.length + 4);
+  return out;
+}
+
+// A valid 16x16 grayscale PNG: dark square centered on a light backdrop.
+function validPng() {
+  const size = 16;
+  const rows = [];
+  for (let y = 0; y < size; y++) {
+    const row = Buffer.alloc(size + 1);
+    for (let x = 0; x < size; x++) {
+      row[x + 1] = x >= 4 && x < 12 && y >= 4 && y < 12 ? 30 : 235;
+    }
+    rows.push(row);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 0; // grayscale
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlib.deflateSync(Buffer.concat(rows))),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 function binaryStlCube(sizeMm) {
   const s = sizeMm;
@@ -93,6 +136,20 @@ await page.getByText('Add flat base plate').click();
 await page.getByLabel('Base plate thickness').fill('2');
 await page.getByText('Finished size: 120.0 × 120.0 × 122.0 mm').waitFor();
 
+// --- Workflow 3: AI picture-to-3D (runs when the AI service is up) ---
+let aiResult = 'skipped: AI service not running';
+const aiHealthy = await page.evaluate(() =>
+  fetch('/api/health').then(r => r.ok).catch(() => false));
+if (aiHealthy) {
+  await page.getByTestId('ai-generate').waitFor();
+  await page.setInputFiles('[data-testid=photo-input]', { name: 'photo.png', mimeType: 'image/png', buffer: validPng() });
+  await page.getByText('Model ready').waitFor({ timeout: 180000 });
+  await page.getByTestId('repair-report').waitFor();
+  const generated3mf = await expectDownload('Download 3MF (Bambu)', 200);
+  if (!generated3mf.name.startsWith('photo_')) throw new Error(`Unexpected generated model name: ${generated3mf.name}`);
+  aiResult = generated3mf;
+}
+
 if (consoleErrors.length) throw new Error(`Browser errors: ${consoleErrors.join(' | ')}`);
-console.log(JSON.stringify({ reliefStatus, reliefStl, relief3mf, modelSize, model3mf, modelStl }, null, 2));
+console.log(JSON.stringify({ reliefStatus, reliefStl, relief3mf, modelSize, model3mf, modelStl, aiResult }, null, 2));
 await browser.close();

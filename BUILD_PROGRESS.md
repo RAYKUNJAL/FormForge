@@ -29,5 +29,5 @@
 - [ ] Lithophane workflow
 - [ ] Oversized-model splitting
 - [ ] Parametric OpenSCAD templates
-- [ ] Built-in AI image-to-3D provider (API adapter)
+- [x] Built-in AI image-to-3D provider (self-hosted TripoSR service)
 - [ ] Authentication and saved projects

@@ -26,6 +26,8 @@ function App() {
   const mountRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [aiAvailable, setAiAvailable] = useState<'unknown' | 'yes' | 'no'>('unknown');
   const [mode, setMode] = useState<Mode>('relief');
   const [printerId, setPrinterId] = useState('p1s');
   const [unit, setUnit] = useState<Unit>('in');
@@ -138,6 +140,49 @@ function App() {
     if (imageUrl) processImage(imageUrl, rotation, stripBackground);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl, rotation, stripBackground]);
+
+  useEffect(() => {
+    if (mode !== 'model' || aiAvailable !== 'unknown') return;
+    fetch('/api/health')
+      .then(response => setAiAvailable(response.ok ? 'yes' : 'no'))
+      .catch(() => setAiAvailable('no'));
+  }, [mode, aiAvailable]);
+
+  const generateFromPhoto = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Please upload a PNG, JPG, or WEBP picture.'); return; }
+    setError('');
+    setBusy(true);
+    try {
+      setStatus('Uploading the picture to the 3D generator…');
+      const form = new FormData();
+      form.append('image', file);
+      const response = await fetch('/api/generate', { method: 'POST', body: form });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.detail ?? 'The 3D generator is not available on this server right now.');
+      }
+      const { job_id: jobId } = await response.json();
+      for (;;) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const statusResponse = await fetch(`/api/jobs/${jobId}`);
+        if (!statusResponse.ok) throw new Error('Lost contact with the 3D generator. Try again.');
+        const job = await statusResponse.json();
+        if (job.status === 'failed') throw new Error(job.error ?? '3D generation failed.');
+        if (job.status === 'complete') break;
+        setStatus(`Creating your 3D model — ${job.stage}…`);
+      }
+      const modelResponse = await fetch(`/api/jobs/${jobId}/model`);
+      if (!modelResponse.ok) throw new Error('The generated model could not be downloaded. Try again.');
+      const blob = await modelResponse.blob();
+      const baseName = file.name.replace(/\.[^.]+$/, '') || 'formforge-model';
+      await handleModelFile(new File([blob], `${baseName}.glb`, { type: 'model/gltf-binary' }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '3D generation failed.');
+      setStatus('Upload a 3D model or a picture to begin.');
+      setBusy(false);
+    }
+  };
 
   const handleModelFile = async (file?: File) => {
     if (!file) return;
@@ -308,7 +353,14 @@ function App() {
             {mode === 'model' && <>
               <div className="step"><span>1</span><div><b>Upload 3D model</b><small>STL, OBJ, GLB, GLTF or 3MF</small></div></div>
               <button className="upload" disabled={busy} onClick={() => modelInputRef.current?.click()}>{modelGeometry ? 'Replace model' : busy ? 'Working…' : 'Choose 3D model'}</button>
-              <input ref={modelInputRef} type="file" accept=".stl,.obj,.glb,.gltf,.3mf" hidden onChange={e => handleModelFile(e.target.files?.[0])} />
+              <input ref={modelInputRef} type="file" accept=".stl,.obj,.glb,.gltf,.3mf" hidden onChange={e => { handleModelFile(e.target.files?.[0]); e.target.value = ''; }} />
+              {aiAvailable === 'yes' && <>
+                <div className="or">or</div>
+                <button className="upload" disabled={busy} data-testid="ai-generate" onClick={() => photoInputRef.current?.click()}>{busy ? 'Working…' : 'Create 3D model from a picture'}</button>
+                <input ref={photoInputRef} type="file" accept="image/*" hidden data-testid="photo-input" onChange={e => { generateFromPhoto(e.target.files?.[0]); e.target.value = ''; }} />
+                <p className="hint">Built-in AI (TripoSR) turns one picture into a full 3D model. On CPU servers this takes a few minutes.</p>
+              </>}
+              {aiAvailable === 'no' && <p className="hint">Picture-to-3D generation is not running on this server. Deploy the AI service from DEPLOY.md to enable it.</p>}
               {repairReport && <div className="repair-card" data-testid="repair-report">
                 <b>Automatic repair</b>
                 <ul>{repairReport.notes.map((note, i) => <li key={i}>{note}</li>)}</ul>

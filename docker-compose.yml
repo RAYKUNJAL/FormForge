@@ -5,3 +5,17 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    depends_on:
+      - ai
+
+  ai:
+    build: ./server
+    container_name: formforge-ai
+    restart: unless-stopped
+    environment:
+      - FORMFORGE_AI_PROVIDER=${FORMFORGE_AI_PROVIDER:-triposr}
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+
+volumes:
+  hf-cache:

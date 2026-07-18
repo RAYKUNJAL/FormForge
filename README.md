@@ -8,10 +8,11 @@ A browser-based tool for turning artwork and AI-generated 3D models into print-r
 Upload artwork (PNG/JPG/WEBP/SVG), optionally strip the background, rotate it, enter finished dimensions in inches or millimeters, generate a closed bas-relief mesh, preview it in 3D, and export.
 
 ### 3D Model → Print
-Upload a 3D model (STL, OBJ, GLB, GLTF, or 3MF) from ChatGPT, Google, Meshy, Tripo, or any other tool. The mesh is automatically repaired — duplicate vertices welded, floating debris removed, holes filled, flipped triangles fixed, inside-out surfaces corrected — then scaled uniformly to your exact finished size, rested on the bed, optionally given a flat base plate, checked against your printer's build volume, and exported.
+Upload a 3D model (STL, OBJ, GLB, GLTF, or 3MF) — or just a **picture**: the built-in AI service (open-source TripoSR, MIT license, self-hosted) turns a single image into a full 3D model with no third-party accounts or fees. Either way, the mesh is automatically repaired — duplicate vertices welded, floating debris removed, holes filled, flipped triangles fixed, inside-out surfaces corrected — then scaled uniformly to your exact finished size, rested on the bed, optionally given a flat base plate, checked against your printer's build volume, and exported.
 
 ## Features
 
+- Built-in picture-to-3D generation (TripoSR) with progress reporting, running entirely on your own server
 - One-click automatic background removal for AI renders
 - Inch, millimeter, decimal, and fractional-inch dimensions (e.g. `8 1/2`)
 - Automatic mesh repair with a plain-language report
@@ -45,6 +46,12 @@ For the e2e test, start `npm run preview` first (or set `FORMFORGE_URL`). Set `C
 
 See `DEPLOY.md` — a Dockerfile, nginx config, and docker-compose file are included.
 
-## Current boundary
+## AI service
 
-FormForge repairs and prepares existing 3D models; it does not generate the unseen sides of a 2D picture by itself. To go from a single image to a full 3D object, generate the model with an image-to-3D tool (Meshy, Tripo, TripoSR, Hunyuan3D, etc.) and drop the result into the **3D Model → Print** workflow. A built-in generation provider is a planned phase in `FORMFORGE_BUILD_SPEC.md`.
+`server/` contains a FastAPI service that powers the picture-to-3D button. It wraps the open-source TripoSR model and downloads the weights (~1.5 GB) automatically on first use. A `synthetic` provider (`FORMFORGE_AI_PROVIDER=synthetic`) exercises the same API and pipeline without any ML dependencies — used by the automated tests. Verify the service alone with:
+
+```bash
+cd server && python selftest.py
+```
+
+The frontend checks `/api/health`; when the service isn't deployed, the AI button is hidden and the rest of the app works unchanged.
